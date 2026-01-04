@@ -1,4 +1,6 @@
 import { normalizeURL } from "./crawl";
+import { getH1FromHTML } from "./crawl";
+import { getFirstParagraphFromHTML } from "./crawl";
 import {expect, test} from 'vitest'
 
 test.each([
@@ -8,4 +10,26 @@ test.each([
     ["http://blog.boot.dev/path","blog.boot.dev/path"]
 ])("normalizes URL %s to %s", (input, expected) => {
     expect(normalizeURL(input)).toBe(expected);
+});
+
+//getH1FromHTML tests
+test("getH1FromHTML basic", () => {
+  const inputBody = `<html><body><h1>Test Title</h1></body></html>`;
+  const actual = getH1FromHTML(inputBody);
+  const expected = "Test Title";
+  expect(actual).toEqual(expected);
+});
+
+test("getFirstParagraphFromHTML main priority", () => {
+  const inputBody = `
+    <html><body>
+      <p>Outside paragraph.</p>
+      <main>
+        <p>Main paragraph.</p>
+      </main>
+    </body></html>
+  `;
+  const actual = getFirstParagraphFromHTML(inputBody);
+  const expected = "Main paragraph.";
+  expect(actual).toEqual(expected);
 });
