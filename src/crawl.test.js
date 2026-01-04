@@ -1,7 +1,7 @@
 import { normalizeURL } from "./crawl";
 import { expect, test } from 'vitest';
 import { normalizeURL } from "./crawl";
-import { getH1FromHTML } from "./crawl";
+import { getH1fromHTML } from "./crawl";
 import { getFirstParagraphFromHTML } from "./crawl";
 
 test.each([
@@ -13,9 +13,9 @@ test.each([
     expect(normalizeURL(input)).toBe(expected);
 });
 //getH1FromHTML tests
-test("getH1FromHTML basic", () => {
+test("getH1fromHTML basic", () => {
     const inputBody = `<html><body><h1>Test Title</h1></body></html>`;
-    const actual = getH1FromHTML(inputBody);
+    const actual = getH1fromHTML(inputBody);
     const expected = "Test Title";
     expect(actual).toEqual(expected);
 });

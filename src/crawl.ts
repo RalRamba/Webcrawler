@@ -12,8 +12,7 @@ export function normalizeURL(target_url:string) {
 
 
 export function getH1fromHTML(html:string){
-
-    const dom = new JSDOM(html);
+const dom = new JSDOM(html);
     const h1Element = dom.window.document.querySelector("h1");
     if (h1Element) {
         return h1Element.textContent || "";
@@ -24,16 +23,20 @@ export function getH1fromHTML(html:string){
 
 export function getFirstParagraphFromHTML(html:string){
 const dom = new JSDOM(html);
-    const mainElement = dom.window.document.querySelector("main");
-    if (mainElement) {
-        const pInMain = mainElement.querySelector("p");
-        if (pInMain) {
-            return pInMain.textContent || "";
+     const mainElement = dom.window.document.querySelector("main");
+     if (mainElement) {
+        const pElement = mainElement.querySelector("p");
+        if(pElement) {
+            return pElement?.textContent
         }
-    const pElement = dom.window.document.querySelector("p");
-    if (pElement) {
-        return pElement.textContent || "";
-    } else {
-        return "";
-    }
+     }
+     else {
+        const pElement = dom.window.document.querySelector("p");
+        if(pElement) {
+            return pElement?.textContent
+        }   
+        else {
+            return "";
+        }
+     }
 };
