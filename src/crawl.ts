@@ -1,4 +1,96 @@
 import {JSDOM} from "jsdom";
+import { get } from "node:http";
+import { stringify } from "node:querystring";
+
+
+
+export function main(){
+    let crawled_urls:string[] = [];
+    console.log("Crawler Loaded, targeting:");
+    console.log(process.argv[2]);
+    if (process.argv.length < 3) {
+        console.error("No URL provided. Please provide a target URL");
+        process.exit(1);
+    }
+    else{
+        if (process.argv.length > 3 ){
+            console.error("Too many arguments provided. Please provide a single target URL");
+            process.exit(1);
+        }
+        else {
+            let finalpages = crawlPage(getBaseURL(process.argv[2]), process.argv[2], {}).then((pages)=>{
+                console.log("Crawling complete.");
+                console.log("Crawled Pages:");
+                console.log(pages);
+            });
+        }
+    }
+};
+
+//function to retrieve HTML from a provided URL
+async function getHTML(url:string){
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const html = await response.text();
+    return html;
+};
+
+
+//function to check if an URL is in the scope of the current crawl
+export function urlcheck(target_url:string){
+    try {
+        if ((getBaseURL(target_url)) == (getBaseURL(process.argv[2]))){
+            return true;
+        };
+            console.log("urlcheck returned false for " + target_url + ", URL appears OOS.");
+            return false;
+
+    } catch (error) {
+        return false;
+    }
+}
+
+//crawler function to abstract crawling logic for recursive use
+async function crawlPage(
+    baseURL:string,
+    currentURL:string,
+    pages: Record<string, number>,
+): Promise<Record<string, number>>{
+    console.log("Crawling: " + currentURL);
+    try {
+        const html = await getHTML(currentURL);
+        const pageData = extractPageData(html, currentURL);
+        for (const link of pageData.outgoing_links){
+                if (urlcheck(link)){
+                    if (!(link in pages)){
+                        pages[link] = 1;
+                        await crawlPage(baseURL, link, pages);
+                    } else {
+                            pages[link] += 1;
+                            //console.log("Already crawled " + link + ", incrementing visit count to " + pages[link] );
+                    }
+                }
+        }
+                    return pages;        
+    }catch (error) {
+            console.error("Error crawling the page: " + error);
+            return pages;
+    }           
+};
+
+export function getBaseURL(target_url:string) {
+    //console.log("Normalizing URL " + target_url);
+    let working_URL:URL = new URL(target_url);
+    let baseURL:string = working_URL.hostname;
+    if (baseURL.slice(-1) === "/") {
+        baseURL = baseURL.slice(0, -1)
+    };
+    return baseURL
+}
+
+
 
 export function normalizeURL(target_url:string) {
     //console.log("Normalizing URL " + target_url);
@@ -97,3 +189,4 @@ export function extractPageData(html:string, pageURL:string): ExtractedPageData{
         image_urls: images
     };
 };
+

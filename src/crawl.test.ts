@@ -5,6 +5,8 @@ import { getFirstParagraphFromHTML } from "./crawl";
 import { getURLsFromHTML } from "./crawl";
 import { getImagesFromHTML } from "./crawl";
 import { extractPageData } from "./crawl";
+import { mainModule } from "node:process";  
+import { main } from "./crawl";
 
 test.each([
     ["https://blog.boot.dev/path/", "blog.boot.dev/path"],
@@ -83,3 +85,5 @@ test("extractPageData basic", () => {
 
   expect(actual).toEqual(expected);
 });
+
+

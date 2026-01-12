@@ -1,2 +1,4 @@
+import main from "./crawl.js";
 "use strict";
-console.log("Hello, World!");
+
+main();
