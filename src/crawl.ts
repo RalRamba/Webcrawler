@@ -19,6 +19,7 @@ export interface ExtractedPageData {
 export async function main() {
     console.log("Crawler Loaded, targeting:");
     console.log(process.argv[2]);
+    console.log("target file is: " + (process.argv[5] || "report.csv"));
 
     if (process.argv.length < 3 || process.argv.length > 6) {
         console.error("Usage: node crawler.js <URL>");
@@ -178,7 +179,7 @@ class ConcurrentCrawler {
     private async crawlPage(currentURL: string): Promise<void> {
         if (this.shouldStop) return;
 
-        console.log("Crawling:", currentURL);
+        //console.log("Crawling:", currentURL);
 
         const normalized = normalizeURL(currentURL);
         const isNew = this.addPageVisit(normalized);
@@ -244,10 +245,15 @@ private getURLsFromHTML(html: string, baseURL: string): string[] {
 
         try {
             const resolved = new URL(href, baseURL).href;
-            urls.push(resolved.endsWith("/") ? resolved.slice(0, -1) : resolved);
+            urls.push(resolved);
         } catch {}
     });
 
     return urls;
 }
+}
+
+
+if (import.meta.main) {
+  main();
 }
