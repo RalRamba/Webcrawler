@@ -1,107 +1,90 @@
 import {JSDOM} from "jsdom";
 import { get } from "node:http";
+import { url } from "node:inspector";
 import { stringify } from "node:querystring";
+import { promiseHooks } from "node:v8";
+import pLimit from 'p-limit';
+import  {writeCSVReport}  from './report.js';
+
+export interface ExtractedPageData {
+    url: string;
+    h1: string;
+    first_paragraph: string;
+    outgoing_links: string[];
+    image_urls: string[];
+}
 
 
 
-export function main(){
-    let crawled_urls:string[] = [];
+export async function main() {
     console.log("Crawler Loaded, targeting:");
     console.log(process.argv[2]);
-    if (process.argv.length < 3) {
-        console.error("No URL provided. Please provide a target URL");
+
+    if (process.argv.length < 3 || process.argv.length > 6) {
+        console.error("Usage: node crawler.js <URL>");
         process.exit(1);
     }
-    else{
-        if (process.argv.length > 3 ){
-            console.error("Too many arguments provided. Please provide a single target URL");
-            process.exit(1);
-        }
-        else {
-            let finalpages = crawlPage(getBaseURL(process.argv[2]), process.argv[2], {}).then((pages)=>{
-                console.log("Crawling complete.");
-                console.log("Crawled Pages:");
-                console.log(pages);
-            });
-        }
-    }
-};
 
-//function to retrieve HTML from a provided URL
-async function getHTML(url:string){
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const html = await response.text();
-    return html;
-};
+    const target = process.argv[2];
+    const maxConcurrency: string = process.argv[3];
+    const maxPages:string = process.argv[4];
+    const filename:string = process.argv[5] || "report.csv";
+    const pages = await crawlSiteAsync(target, maxConcurrency ? parseInt(maxConcurrency) : 5, maxPages ? parseInt(maxPages) : 100);
+
+    console.log("Crawling complete.");
+    console.log("Writing report to " + filename);
+    writeCSVReport(pages, filename);
+    //console.log("Crawled Pages:");
+    //console.log(pages);
 
 
-//function to check if an URL is in the scope of the current crawl
-export function urlcheck(target_url:string){
+}
+
+
+
+export function urlcheck(target_url: string) {
     try {
-        if ((getBaseURL(target_url)) == (getBaseURL(process.argv[2]))){
-            return true;
-        };
-            console.log("urlcheck returned false for " + target_url + ", URL appears OOS.");
-            return false;
-
-    } catch (error) {
+        return getBaseURL(target_url) === getBaseURL(process.argv[2]);
+    } catch {
         return false;
     }
 }
 
+
 //crawler function to abstract crawling logic for recursive use
-async function crawlPage(
-    baseURL:string,
-    currentURL:string,
-    pages: Record<string, number>,
-): Promise<Record<string, number>>{
-    console.log("Crawling: " + currentURL);
-    try {
-        const html = await getHTML(currentURL);
-        const pageData = extractPageData(html, currentURL);
-        for (const link of pageData.outgoing_links){
-                if (urlcheck(link)){
-                    if (!(link in pages)){
-                        pages[link] = 1;
-                        await crawlPage(baseURL, link, pages);
-                    } else {
-                            pages[link] += 1;
-                            //console.log("Already crawled " + link + ", incrementing visit count to " + pages[link] );
-                    }
-                }
-        }
-                    return pages;        
-    }catch (error) {
-            console.error("Error crawling the page: " + error);
-            return pages;
-    }           
-};
 
-export function getBaseURL(target_url:string) {
-    //console.log("Normalizing URL " + target_url);
-    let working_URL:URL = new URL(target_url);
-    let baseURL:string = working_URL.hostname;
-    if (baseURL.slice(-1) === "/") {
-        baseURL = baseURL.slice(0, -1)
-    };
-    return baseURL
+
+export function getBaseURL(target_url: string) {
+    const u = new URL(target_url);
+    return `${u.protocol}//${u.hostname}`;
 }
 
+export async function crawlSiteAsync(
+  url: string,
+  maxConcurrency = 5,
+  maxPages = 100
+): Promise<Record<string, ExtractedPageData>> {
 
-
-export function normalizeURL(target_url:string) {
-    //console.log("Normalizing URL " + target_url);
-    let working_URL:URL = new URL(target_url);
-    let normalized_url:string = working_URL.hostname + working_URL.pathname;
-    if (normalized_url.slice(-1) === "/") {
-        normalized_url = normalized_url.slice(0, -1)
-    };
-    return normalized_url
+    const base = getBaseURL(url);
+    const crawler = new ConcurrentCrawler(base, {}, maxConcurrency, maxPages);
+    return await crawler.crawl();
 }
 
+export function normalizeURL(target_url: string) {
+    const u = new URL(target_url);
+
+    let normalized = u.hostname + u.pathname.toLowerCase();
+
+    // Remove trailing slash
+    if (normalized.endsWith("/")) {
+        normalized = normalized.slice(0, -1);
+    }
+
+    // Remove default index pages
+    normalized = normalized.replace(/index\.(html|htm|php)$/, "");
+
+    return normalized;
+}
 
 export function getH1fromHTML(html:string){
 const dom = new JSDOM(html);
@@ -134,30 +117,6 @@ const dom = new JSDOM(html);
 };
 
 
-export function getURLsFromHTML(html: string, baseURL: string): string[]{
-    const dom = new JSDOM(html);
-    const aElements = dom.window.document.querySelectorAll("a");
-    const urls: string[] = []; 
-    aElements.forEach((aElement) => {
-        const href = aElement.getAttribute("href");
-        if (href) {
-            try {
-                const url = new URL(href, baseURL);
-                if (url.href.slice(-1) === "/") {
-                let normalized:string = url.href.slice(0, -1)
-                urls.push(normalized);
-                return;
-                };
-                urls.push(url.href);
-                return;
-            } catch (error) {
-            }
-        }
-});
-    return urls;
-};
-
-
 export function getImagesFromHTML(html: string, baseURL: string): string[]{
     const dom = new JSDOM(html);
     const imgElements = dom.window.document.querySelectorAll("img");
@@ -176,17 +135,119 @@ export function getImagesFromHTML(html: string, baseURL: string): string[]{
 };
 
 
-export function extractPageData(html:string, pageURL:string): ExtractedPageData{
+//p-limit based concurrent crawler class
+class ConcurrentCrawler {
+    private limit: <T>(fn: () => Promise<T>) => Promise<T>;
+    private shouldStop = false;
+    private allTasks = new Set<Promise<void>>();
+    private abortController = new AbortController();
+
+    constructor(
+        private baseUrl: string,
+        private pages: Record<string, ExtractedPageData> = {},
+        private maxConcurrency = 5,
+        private maxPages = 100
+    ) {
+        this.limit = pLimit(maxConcurrency);
+    }
+
+    private addPageVisit(normalizedUrl: string): boolean {
+    if (this.shouldStop) return false;
+
+    const count = Object.keys(this.pages).length;
+    if (count >= this.maxPages) {
+        this.shouldStop = true;
+        console.log("Reached maximum number of pages to crawl.");
+        this.abortController.abort();
+        return false;
+    }
+
+    if (normalizedUrl in this.pages) return false;
+
+    return true;
+    }
+
+    private async getHTML(url: string): Promise<string> {
+        return this.limit(async () => {
+            const response = await fetch(url, { signal: this.abortController.signal });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.text();
+        });
+    }
+
+    private async crawlPage(currentURL: string): Promise<void> {
+        if (this.shouldStop) return;
+
+        console.log("Crawling:", currentURL);
+
+        const normalized = normalizeURL(currentURL);
+        const isNew = this.addPageVisit(normalized);
+        if (!isNew) return;
+
+        let html: string;
+        try {
+            html = await this.getHTML(currentURL);
+        } catch {
+            return;
+        }
+
+        const pageData = this.extractPageData(html, currentURL);
+        this.pages[normalized] = pageData;  
+
+        const outgoing = pageData.outgoing_links;
+
+        for (const nextUrl of outgoing) {
+        if (this.shouldStop) break;
+
+        const normalizedNext = normalizeURL(nextUrl);
+
+        // Skip if already visited
+        if (normalizedNext in this.pages) continue;
+
+        // Skip if external
+        if (!urlcheck(nextUrl)) continue;
+
+        const task = this.crawlPage(nextUrl);
+        this.allTasks.add(task);
+        task.finally(() => this.allTasks.delete(task));
+    }
+    }
+
+    public async crawl(): Promise<Record<string, ExtractedPageData>> {
+        await this.crawlPage(this.baseUrl);
+        await Promise.all(this.allTasks);
+        return this.pages;
+    }
+
+    private extractPageData(html: string, pageURL: string): ExtractedPageData {
     const h1 = getH1fromHTML(html);
     const firstParagraph = getFirstParagraphFromHTML(html);
-    const urls = getURLsFromHTML(html, pageURL);
-    const images = getImagesFromHTML(html, pageURL);
+    const urls = this.getURLsFromHTML(html, this.baseUrl);
+    const images = getImagesFromHTML(html, this.baseUrl);
+
     return {
         url: pageURL,
-        h1: h1,
+        h1,
         first_paragraph: firstParagraph,
         outgoing_links: urls,
         image_urls: images
     };
-};
+}
 
+private getURLsFromHTML(html: string, baseURL: string): string[] {
+    const dom = new JSDOM(html);
+    const urls: string[] = [];
+
+    dom.window.document.querySelectorAll("a").forEach(a => {
+        const href = a.getAttribute("href");
+        if (!href) return;
+
+        try {
+            const resolved = new URL(href, baseURL).href;
+            urls.push(resolved.endsWith("/") ? resolved.slice(0, -1) : resolved);
+        } catch {}
+    });
+
+    return urls;
+}
+}
